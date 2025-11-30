@@ -1,0 +1,7 @@
+
+	// 3.1. 检查时间戳不能太超前（防止时间戳攻击）
+	maxFutureTime := time.Now().Unix() + 60 // 允许60秒的时间偏差
+	if b.Header.Timestamp > maxFutureTime {
+		return fmt.Errorf("invalid timestamp: too far in future (block: %d, max: %d)",
+			b.Header.Timestamp, maxFutureTime)
+	}

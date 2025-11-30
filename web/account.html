@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账户详情 - FAN链浏览器</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .detail-grid {
+            display: grid;
+            gap: 16px;
+            padding: 24px;
+        }
+
+        .detail-row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 20px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color);
+            align-items: start;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding-top: 4px;
+        }
+
+        .detail-value {
+            font-size: 15px;
+            color: var(--text-primary);
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .detail-value.large {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--secondary-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            margin-left: 12px;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--hover-bg);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.1), rgba(46, 204, 113, 0.1));
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .balance-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .balance-item {
+            text-align: center;
+        }
+
+        .balance-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .balance-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+        }
+
+        .balance-value.total {
+            color: var(--accent-green);
+        }
+
+        .balance-value.staked {
+            color: var(--accent-blue);
+        }
+
+        .account-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+        }
+
+        .type-validator {
+            background-color: rgba(155, 89, 182, 0.15);
+            color: #9b59b6;
+        }
+
+        .type-normal {
+            background-color: rgba(52, 152, 219, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .error-message {
+            background-color: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--accent-red);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            color: var(--accent-red);
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .detail-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .copy-btn {
+                margin-left: 0;
+                margin-top: 8px;
+            }
+
+            .balance-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .balance-value {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/">首页</a></li>
+                <li><a href="/blocks.html">区块</a></li>
+                <li><a href="/transactions.html">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html" class="active">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <h1 style="margin-bottom: 30px; font-size: 32px;">账户详情</h1>
+
+        <!-- 余额卡片 -->
+        <div class="balance-card" id="balanceCard" style="display: none;">
+            <div class="balance-grid">
+                <div class="balance-item">
+                    <div class="balance-label">总余额</div>
+                    <div class="balance-value total" id="totalBalance">-</div>
+                </div>
+                <div class="balance-item">
+                    <div class="balance-label">可用余额</div>
+                    <div class="balance-value" id="availableBalance">-</div>
+                </div>
+                <div class="balance-item">
+                    <div class="balance-label">质押余额</div>
+                    <div class="balance-value staked" id="stakedBalance">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 账户信息卡片 -->
+        <div class="card" id="accountCard">
+            <div class="card-header">
+                <h2 class="card-title">账户信息</h2>
+            </div>
+
+            <div id="accountContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易历史 -->
+        <div class="card" id="transactionsCard" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">交易历史</h2>
+                <span id="txCount" class="card-action"></span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>交易哈希</th>
+                            <th>类型</th>
+                            <th>方向</th>
+                            <th>对方地址</th>
+                            <th>金额</th>
+                            <th>时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTable">
+                        <tr>
+                            <td colspan="6" class="loading">
+                                <div class="spinner"></div>
+                                <div>加载中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination">
+                <button id="prevBtn" onclick="prevPage()" disabled>上一页</button>
+                <span class="page-info">第 <span id="currentPage">1</span> 页</span>
+                <button id="nextBtn" onclick="nextPage()">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let currentAddress = null;
+        let currentPage = 1;
+        const pageSize = 20;
+
+        // 从URL获取地址
+        function getAddressFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('address');
+        }
+
+        // 初始化页面
+        async function init() {
+            const address = getAddressFromURL();
+            if (!address) {
+                showError('未指定账户地址');
+                return;
+            }
+
+            currentAddress = address;
+            await loadAccount(address);
+            await loadTransactions(address, currentPage);
+        }
+
+        // 加载账户信息
+        async function loadAccount(address) {
+            try {
+                const account = await API.getBalance(address);
+                displayAccount(account);
+            } catch (error) {
+                console.error('加载账户失败:', error);
+                showError('加载账户失败: ' + error.message);
+            }
+        }
+
+        // 显示账户信息
+        function displayAccount(account) {
+            const content = document.getElementById('accountContent');
+            const balanceCard = document.getElementById('balanceCard');
+
+            // 计算总余额（API返回的字段名）
+            const available = account.available_balance || 0;
+            const staked = account.staked_balance || 0;
+            const total = account.total_balance || (available + staked);
+
+            // 显示余额卡片
+            balanceCard.style.display = 'block';
+            document.getElementById('totalBalance').textContent = Utils.formatAmount(total);
+            document.getElementById('availableBalance').textContent = Utils.formatAmount(available);
+            document.getElementById('stakedBalance').textContent = Utils.formatAmount(staked);
+
+            // 确定账户类型
+            const isValidator = account.is_validator || staked >= 1000000000000;
+            const accountType = isValidator ? 'validator' : 'normal';
+            const accountTypeText = isValidator ? '🏆 验证者' : '👤 普通账户';
+            const accountTypeClass = isValidator ? 'type-validator' : 'type-normal';
+
+            content.innerHTML = `
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <div class="detail-label">账户类型</div>
+                        <div class="detail-value">
+                            <span class="account-type-badge ${accountTypeClass}">${accountTypeText}</span>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">账户地址</div>
+                        <div class="detail-value">
+                            ${currentAddress}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${currentAddress}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Nonce</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${account.nonce !== undefined ? account.nonce : '-'}
+                        </div>
+                    </div>
+                    ${account.validator_info ? `
+                    <div class="detail-row">
+                        <div class="detail-label">验证者信息</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            <div style="color: var(--text-secondary); margin-bottom: 8px;">
+                                质押数量: <span style="color: var(--accent-blue);">${Utils.formatAmount(account.validator_info.stake || staked)}</span>
+                            </div>
+                            ${account.validator_info.rewards !== undefined ? `
+                            <div style="color: var(--text-secondary);">
+                                累计奖励: <span style="color: var(--accent-green);">${Utils.formatAmount(account.validator_info.rewards)}</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // 加载交易历史
+        async function loadTransactions(address, page) {
+            try {
+                const data = await API.getAccountTransactions(address, page, pageSize);
+                displayTransactions(data.transactions || []);
+
+                // 更新分页
+                const hasNext = data.transactions && data.transactions.length === pageSize;
+                const hasPrev = page > 1;
+                updatePagination(hasPrev, hasNext);
+
+                // 显示交易卡片
+                document.getElementById('transactionsCard').style.display = 'block';
+                document.getElementById('currentPage').textContent = page;
+
+                // 更新交易数量
+                if (data.total !== undefined) {
+                    document.getElementById('txCount').textContent = `共 ${data.total} 笔交易`;
+                } else if (data.transactions) {
+                    document.getElementById('txCount').textContent = `第 ${page} 页`;
+                }
+            } catch (error) {
+                console.error('加载交易历史失败:', error);
+                document.getElementById('transactionsTable').innerHTML =
+                    '<tr><td colspan="6" class="empty-state">加载失败</td></tr>';
+            }
+        }
+
+        // 显示交易列表
+        function displayTransactions(transactions) {
+            const table = document.getElementById('transactionsTable');
+
+            if (!transactions || transactions.length === 0) {
+                table.innerHTML = '<tr><td colspan="6" class="empty-state">暂无交易记录</td></tr>';
+                return;
+            }
+
+            table.innerHTML = transactions.map(tx => {
+                // 判断交易方向
+                const isOutgoing = tx.from.toLowerCase() === currentAddress.toLowerCase();
+                const direction = isOutgoing ? '发送' : '接收';
+                const directionClass = isOutgoing ? 'accent-red' : 'accent-green';
+                const otherAddress = isOutgoing ? tx.to : tx.from;
+
+                return `
+                    <tr>
+                        <td>
+                            <a href="/transaction.html?hash=${tx.hash}" class="hash-link">
+                                ${Utils.truncateHash(tx.hash)}
+                            </a>
+                        </td>
+                        <td>
+                            <span class="badge badge-${Utils.getTxTypeBadge(tx.type)}">
+                                ${Utils.getTxTypeText(tx.type)}
+                            </span>
+                        </td>
+                        <td>
+                            <span style="color: var(--${directionClass}); font-weight: 600;">
+                                ${direction}
+                            </span>
+                        </td>
+                        <td>
+                            ${otherAddress ? `<a href="/account.html?address=${otherAddress}" class="hash-link">${Utils.truncateHash(otherAddress, 8, 6)}</a>` : '-'}
+                        </td>
+                        <td class="amount ${isOutgoing ? 'negative' : 'positive'}">
+                            ${isOutgoing ? '-' : '+'}${Utils.formatAmount(tx.amount)}
+                        </td>
+                        <td class="timestamp">${Utils.formatTimestamp(tx.timestamp)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 更新分页按钮
+        function updatePagination(hasPrev, hasNext) {
+            document.getElementById('prevBtn').disabled = !hasPrev;
+            document.getElementById('nextBtn').disabled = !hasNext;
+        }
+
+        // 上一页
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadTransactions(currentAddress, currentPage);
+                window.scrollTo(0, document.getElementById('transactionsCard').offsetTop - 80);
+            }
+        }
+
+        // 下一页
+        function nextPage() {
+            currentPage++;
+            loadTransactions(currentAddress, currentPage);
+            window.scrollTo(0, document.getElementById('transactionsCard').offsetTop - 80);
+        }
+
+        // 显示错误
+        function showError(message) {
+            const content = document.getElementById('accountContent');
+            content.innerHTML = `
+                <div class="error-message">
+                    <h3>错误</h3>
+                    <p>${message}</p>
+                    <button onclick="window.location.href='/accounts.html'" style="margin-top: 16px; padding: 10px 20px; background-color: var(--accent-blue); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        返回账户列表
+                    </button>
+                </div>
+            `;
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

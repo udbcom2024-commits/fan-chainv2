@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账户列表 - FAN链浏览器</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/">首页</a></li>
+                <li><a href="/blocks.html">区块</a></li>
+                <li><a href="/transactions.html">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html" class="active">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <h1 style="margin-bottom: 30px; font-size: 32px;">账户排行</h1>
+        <p style="color: var(--text-secondary); margin-bottom: 30px;">按总余额排序（可用余额+质押余额）</p>
+
+        <!-- 账户列表 -->
+        <div class="card">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>地址</th>
+                            <th>可用余额</th>
+                            <th>质押余额</th>
+                            <th>总余额</th>
+                            <th>类型</th>
+                            <th>交易次数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="accountsTable">
+                        <tr>
+                            <td colspan="7" class="loading">
+                                <div class="spinner"></div>
+                                <div>加载中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination">
+                <button id="prevBtn" onclick="prevPage()" disabled>上一页</button>
+                <span class="page-info">第 <span id="currentPage">1</span> 页</span>
+                <button id="nextBtn" onclick="nextPage()">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let currentPage = 1;
+        const pageSize = 20;
+        let ws = null;
+
+        // 初始化
+        async function init() {
+            await loadAccounts();
+            // 账户列表变化不频繁，不需要WebSocket实时刷新
+        }
+
+        // 获取账户类型文本
+        function getAccountTypeText(account) {
+            if (account.staked_balance >= 1000000000000) {
+                return '<span class="badge badge-success">验证者</span>';
+            }
+            return '<span class="badge badge-info">普通</span>';
+        }
+
+        // 加载账户列表
+        async function loadAccounts() {
+            try {
+                const data = await API.getAccounts(currentPage, pageSize);
+                const tbody = document.getElementById('accountsTable');
+
+                if (!data.accounts || data.accounts.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无数据</td></tr>';
+                    updatePagination(false, false);
+                    return;
+                }
+
+                tbody.innerHTML = data.accounts.map((account, index) => {
+                    const rank = (currentPage - 1) * pageSize + index + 1;
+                    const totalBalance = account.available_balance + account.staked_balance;
+
+                    return `
+                        <tr>
+                            <td><strong>#${rank}</strong></td>
+                            <td><a href="/account.html?address=${account.address}" class="hash-link">${Utils.truncateHash(account.address, 10, 8)}</a></td>
+                            <td class="amount">${Utils.formatAmount(account.available_balance)}</td>
+                            <td class="amount">${Utils.formatAmount(account.staked_balance)}</td>
+                            <td class="amount"><strong>${Utils.formatAmount(totalBalance)}</strong></td>
+                            <td>${getAccountTypeText(account)}</td>
+                            <td>${account.nonce || 0}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // 更新分页按钮状态
+                const hasNext = data.accounts.length === pageSize;
+                const hasPrev = currentPage > 1;
+                updatePagination(hasPrev, hasNext);
+
+                // 更新页码显示
+                document.getElementById('currentPage').textContent = currentPage;
+            } catch (error) {
+                console.error('加载账户失败:', error);
+                document.getElementById('accountsTable').innerHTML =
+                    '<tr><td colspan="7" class="empty-state">加载失败</td></tr>';
+            }
+        }
+
+        // 更新分页按钮状态
+        function updatePagination(hasPrev, hasNext) {
+            document.getElementById('prevBtn').disabled = !hasPrev;
+            document.getElementById('nextBtn').disabled = !hasNext;
+        }
+
+        // 上一页
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadAccounts();
+                window.scrollTo(0, 0);
+            }
+        }
+
+        // 下一页
+        function nextPage() {
+            currentPage++;
+            loadAccounts();
+            window.scrollTo(0, 0);
+        }
+
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

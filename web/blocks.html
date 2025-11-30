@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>区块列表 - FAN链浏览器</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/">首页</a></li>
+                <li><a href="/blocks.html" class="active">区块</a></li>
+                <li><a href="/transactions.html">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <h1 style="margin-bottom: 30px; font-size: 32px;">区块列表</h1>
+
+        <!-- 区块列表 -->
+        <div class="card">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>高度</th>
+                            <th>出块者</th>
+                            <th>交易数</th>
+                            <th>区块哈希</th>
+                            <th>上一区块哈希</th>
+                            <th>时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocksTable">
+                        <tr>
+                            <td colspan="6" class="loading">
+                                <div class="spinner"></div>
+                                <div>加载中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <div class="pagination">
+                <button id="prevBtn" onclick="prevPage()" disabled>上一页</button>
+                <span class="page-info">第 <span id="currentPage">1</span> 页</span>
+                <button id="nextBtn" onclick="nextPage()">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let currentPage = 1;
+        const pageSize = 20;
+        let ws = null;
+
+        // 初始化
+        async function init() {
+            await loadBlocks();
+            initWebSocket();
+        }
+
+        // 加载区块列表
+        async function loadBlocks() {
+            try {
+                const data = await API.getBlocks(currentPage, pageSize);
+                const tbody = document.getElementById('blocksTable');
+
+                if (!data.blocks || data.blocks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无数据</td></tr>';
+                    updatePagination(false, false);
+                    return;
+                }
+
+                tbody.innerHTML = data.blocks.map(block => `
+                    <tr>
+                        <td><a href="/block.html?height=${block.height}" class="hash-link">#${block.height}</a></td>
+                        <td><a href="/account.html?address=${block.proposer}" class="hash-link">${Utils.truncateHash(block.proposer, 8, 6)}</a></td>
+                        <td>${block.tx_count || 0}</td>
+                        <td><a href="/block.html?height=${block.height}" class="hash-link">${Utils.truncateHash(block.hash)}</a></td>
+                        <td><a href="/block.html?hash=${block.previous_hash}" class="hash-link">${Utils.truncateHash(block.previous_hash)}</a></td>
+                        <td class="timestamp">${Utils.formatTimestamp(block.timestamp)}</td>
+                    </tr>
+                `).join('');
+
+                // 更新分页按钮状态
+                const hasNext = data.blocks.length === pageSize;
+                const hasPrev = currentPage > 1;
+                updatePagination(hasPrev, hasNext);
+
+                // 更新页码显示
+                document.getElementById('currentPage').textContent = currentPage;
+            } catch (error) {
+                console.error('加载区块失败:', error);
+                document.getElementById('blocksTable').innerHTML =
+                    '<tr><td colspan="6" class="empty-state">加载失败</td></tr>';
+            }
+        }
+
+        // 初始化WebSocket
+        function initWebSocket() {
+            ws = new WebSocketClient();
+
+            ws.on('new_block', (block) => {
+                if (currentPage === 1) {
+                    loadBlocks();
+                }
+            });
+
+            ws.connect();
+        }
+
+        // 更新分页按钮状态
+        function updatePagination(hasPrev, hasNext) {
+            document.getElementById('prevBtn').disabled = !hasPrev;
+            document.getElementById('nextBtn').disabled = !hasNext;
+        }
+
+        // 上一页
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadBlocks();
+                window.scrollTo(0, 0);
+            }
+        }
+
+        // 下一页
+        function nextPage() {
+            currentPage++;
+            loadBlocks();
+            window.scrollTo(0, 0);
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+
+        // 页面卸载时断开WebSocket
+        window.addEventListener('beforeunload', () => {
+            if (ws) ws.disconnect();
+        });
+    </script>
+</body>
+</html>

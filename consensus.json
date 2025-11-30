@@ -1,0 +1,83 @@
+{
+  "consensus_version": "1.2.0",
+  "consensus_hash": "",
+  "chain_params": {
+    "fan_unit": 1000000,
+    "fan_decimals": 6,
+    "genesis_address": "F25gxrj3tppc07hunne7hztvde5gkaw78f3xa",
+    "genesis_timestamp": 1700000000
+  },
+  "block_params": {
+    "block_interval_seconds": 5,
+    "finality_blocks": 8,
+    "checkpoint_interval": 5,
+    "checkpoint_keep_count": 3,
+    "max_timestamp_drift": 300,
+    "max_block_size": 1048576,
+    "block_data_threshold_percent": 80
+  },
+  "economic_params": {
+    "min_gas_fee": 1,
+    "max_gas_fee": 10,
+    "base_block_reward": 10000000,
+    "min_reward_unit": 1,
+    "validator_stake_required": 1000000000000
+  },
+  "validator_params": {
+    "max_validators": 100,
+    "active_validator_set": 14,
+    "checkpoint_activation_buffer": 3
+  },
+  "transaction_params": {
+    "max_tx_size": 10240,
+    "max_tx_per_block": 1000,
+    "min_transfer_amount": 1,
+    "max_data_size": 1024,
+    "memo_max_length": 256
+  },
+  "network_params": {
+    "max_peers": 50,
+    "min_peers": 1,
+    "peer_handshake_timeout": 30,
+    "sync_batch_size": 100,
+    "max_block_request_size": 1000,
+    "broadcast_retry_interval": 6,
+    "ping_interval": 60
+  },
+  "security_params": {
+    "max_reorg_depth": 100,
+    "min_block_time_ms": 4500,
+    "max_block_time_ms": 5500,
+    "double_sign_slash": 100,
+    "offline_slash_blocks": 1000
+  },
+  "storage_params": {
+    "ledger_retention_days": 1,
+    "auto_cleanup_enabled": true,
+    "cleanup_check_interval_hours": 24,
+    "min_blocks_to_keep": 17280
+  },
+  "reward_thresholds": [
+    {"balance": 1300000000000000, "description": "13亿FAN"},
+    {"balance": 1200000000000000, "description": "12亿FAN"},
+    {"balance": 1100000000000000, "description": "11亿FAN"},
+    {"balance": 1000000000000000, "description": "10亿FAN"},
+    {"balance": 900000000000000, "description": "9亿FAN"},
+    {"balance": 800000000000000, "description": "8亿FAN"},
+    {"balance": 700000000000000, "description": "7亿FAN"},
+    {"balance": 600000000000000, "description": "6亿FAN"},
+    {"balance": 500000000000000, "description": "5亿FAN"},
+    {"balance": 400000000000000, "description": "4亿FAN"},
+    {"balance": 300000000000000, "description": "3亿FAN"},
+    {"balance": 200000000000000, "description": "2亿FAN"},
+    {"balance": 100000000000000, "description": "1亿FAN"},
+    {"balance": 90000000000000, "description": "9000万FAN"},
+    {"balance": 80000000000000, "description": "8000万FAN"},
+    {"balance": 70000000000000, "description": "7000万FAN"},
+    {"balance": 60000000000000, "description": "6000万FAN"},
+    {"balance": 50000000000000, "description": "5000万FAN"},
+    {"balance": 40000000000000, "description": "4000万FAN"},
+    {"balance": 30000000000000, "description": "3000万FAN"},
+    {"balance": 20000000000000, "description": "2000万FAN"}
+  ]
+}

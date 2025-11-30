@@ -1,0 +1,11 @@
+{
+  "data_dir": "./data",
+  "node_name": "Node2",
+  "node_address": "F4ubbrtkdkaowdfykes1e13rflnce3gi65wcz",
+  "private_key_file": "./keys/node_private.key",
+  "public_key_file": "./keys/node_public.key",
+  "p2p_port": 9001,
+  "api_port": 9000,
+  "p2p_host": "0.0.0.0",
+  "seed_peers": ["35.240.142.148:9001"]
+}

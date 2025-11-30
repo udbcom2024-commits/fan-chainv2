@@ -1,0 +1,29 @@
+	// 2. 【签名验证】验证交易签名（防止伪造）
+	if err := tx.Validate(); err != nil {
+		return fmt.Errorf("invalid transaction: %v", err)
+	}
+
+	// 2.1. 验证签名有效性
+	signData := tx.SignData()
+	if !crypto.Verify(tx.PublicKey, signData, tx.Signature) {
+		log.Printf("🚨 检测到伪造签名！From: %s, TxHash: %s", tx.From, tx.Hash().String())
+		// 伪造签名是严重攻击，没收所有资金
+		if err := sm.confiscateAllFunds(tx.From, "伪造交易签名"); err != nil {
+			log.Printf("没收资金失败: %v", err)
+		}
+		return fmt.Errorf("🚨 签名验证失败：伪造签名，所有资金已没收")
+	}
+
+	// 2.2. 验证公钥是否匹配发送者地址
+	derivedAddress, err := core.AddressFromPublicKey(tx.PublicKey)
+	if err != nil {
+		return fmt.Errorf("无法从公钥生成地址: %v", err)
+	}
+	if derivedAddress != tx.From {
+		log.Printf("🚨 检测到地址伪造！Claimed: %s, Actual: %s", tx.From, derivedAddress)
+		// 地址伪造是严重攻击，没收所有资金
+		if err := sm.confiscateAllFunds(derivedAddress, fmt.Sprintf("伪造发送者地址 (claimed=%s)", tx.From)); err != nil {
+			log.Printf("没收资金失败: %v", err)
+		}
+		return fmt.Errorf("🚨 地址验证失败：公钥不匹配发送地址")
+	}

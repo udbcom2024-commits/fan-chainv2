@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>区块详情 - FAN链浏览器</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .detail-grid {
+            display: grid;
+            gap: 16px;
+            padding: 24px;
+        }
+
+        .detail-row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 20px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color);
+            align-items: start;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding-top: 4px;
+        }
+
+        .detail-value {
+            font-size: 15px;
+            color: var(--text-primary);
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .detail-value.large {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--secondary-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            margin-left: 12px;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--hover-bg);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 12px;
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .nav-btn {
+            flex: 1;
+            background-color: var(--secondary-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .nav-btn:hover:not(:disabled) {
+            background-color: var(--hover-bg);
+            border-color: var(--accent-blue);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background-color: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--accent-red);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            color: var(--accent-red);
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .detail-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .nav-buttons {
+                flex-direction: column;
+            }
+
+            .copy-btn {
+                margin-left: 0;
+                margin-top: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/">首页</a></li>
+                <li><a href="/blocks.html" class="active">区块</a></li>
+                <li><a href="/transactions.html">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <h1 style="margin-bottom: 30px; font-size: 32px;">区块详情</h1>
+
+        <!-- 区块信息卡片 -->
+        <div class="card" id="blockCard">
+            <div class="card-header">
+                <h2 class="card-title">区块信息</h2>
+            </div>
+
+            <div id="blockContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 区块交易列表 -->
+        <div class="card" id="transactionsCard" style="display: none;">
+            <div class="card-header">
+                <h2 class="card-title">区块交易</h2>
+                <span id="txCount" class="card-action"></span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>交易哈希</th>
+                            <th>类型</th>
+                            <th>发送方</th>
+                            <th>接收方</th>
+                            <th>金额</th>
+                            <th>手续费</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTable">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let currentHeight = null;
+
+        // 从URL获取区块高度
+        function getHeightFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('height');
+        }
+
+        // 初始化页面
+        async function init() {
+            const height = getHeightFromURL();
+            if (!height) {
+                showError('未指定区块高度');
+                return;
+            }
+
+            currentHeight = parseInt(height);
+            await loadBlock(currentHeight);
+        }
+
+        // 加载区块详情
+        async function loadBlock(height) {
+            try {
+                const block = await API.getBlock(height);
+                displayBlock(block);
+
+                // 如果有交易，显示交易列表
+                if (block.transactions && block.transactions.length > 0) {
+                    displayTransactions(block.transactions);
+                }
+            } catch (error) {
+                console.error('加载区块失败:', error);
+                showError('加载区块失败: ' + error.message);
+            }
+        }
+
+        // 显示区块信息
+        function displayBlock(block) {
+            const content = document.getElementById('blockContent');
+
+            content.innerHTML = `
+                <div class="nav-buttons">
+                    <button class="nav-btn" onclick="navigateBlock(${block.height - 1})" ${block.height <= 0 ? 'disabled' : ''}>
+                        ← 上一个区块
+                    </button>
+                    <button class="nav-btn" onclick="navigateBlock(${block.height + 1})">
+                        下一个区块 →
+                    </button>
+                </div>
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <div class="detail-label">区块高度</div>
+                        <div class="detail-value large">#${block.height}</div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">区块哈希</div>
+                        <div class="detail-value">
+                            ${block.hash}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${block.hash}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">上一区块哈希</div>
+                        <div class="detail-value">
+                            <a href="/block.html?hash=${block.previous_hash}" class="hash-link">${block.previous_hash}</a>
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${block.previous_hash}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">出块者</div>
+                        <div class="detail-value">
+                            <a href="/account.html?address=${block.proposer}" class="hash-link">${block.proposer}</a>
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${block.proposer}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">时间戳</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${Utils.formatFullTime(block.timestamp)}
+                            <span style="color: var(--text-secondary); margin-left: 12px;">(${Utils.formatTimestamp(block.timestamp)})</span>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">交易数量</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${block.tx_count || 0} 笔交易
+                        </div>
+                    </div>
+                    ${block.merkle_root ? `
+                    <div class="detail-row">
+                        <div class="detail-label">Merkle Root</div>
+                        <div class="detail-value">
+                            ${block.merkle_root}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${block.merkle_root}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${block.state_root ? `
+                    <div class="detail-row">
+                        <div class="detail-label">State Root</div>
+                        <div class="detail-value">
+                            ${block.state_root}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${block.state_root}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // 显示交易列表
+        function displayTransactions(transactions) {
+            const card = document.getElementById('transactionsCard');
+            const table = document.getElementById('transactionsTable');
+            const count = document.getElementById('txCount');
+
+            card.style.display = 'block';
+            count.textContent = `共 ${transactions.length} 笔交易`;
+
+            table.innerHTML = transactions.map(tx => `
+                <tr>
+                    <td>
+                        <a href="/transaction.html?hash=${tx.hash}" class="hash-link">
+                            ${Utils.truncateHash(tx.hash)}
+                        </a>
+                    </td>
+                    <td>
+                        <span class="badge badge-${Utils.getTxTypeBadge(tx.type)}">
+                            ${Utils.getTxTypeText(tx.type)}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="/account.html?address=${tx.from}" class="hash-link">
+                            ${Utils.truncateHash(tx.from, 8, 6)}
+                        </a>
+                    </td>
+                    <td>
+                        ${tx.to ? `<a href="/account.html?address=${tx.to}" class="hash-link">${Utils.truncateHash(tx.to, 8, 6)}</a>` : '-'}
+                    </td>
+                    <td class="amount">${Utils.formatAmount(tx.amount)}</td>
+                    <td class="amount">${Utils.formatAmount(tx.fee || 0)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 导航到其他区块
+        function navigateBlock(height) {
+            window.location.href = `/block.html?height=${height}`;
+        }
+
+        // 显示错误
+        function showError(message) {
+            const content = document.getElementById('blockContent');
+            content.innerHTML = `
+                <div class="error-message">
+                    <h3>错误</h3>
+                    <p>${message}</p>
+                    <button onclick="window.location.href='/blocks.html'" style="margin-top: 16px; padding: 10px 20px; background-color: var(--accent-blue); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        返回区块列表
+                    </button>
+                </div>
+            `;
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+# 数据目录
+data/
+
+# 日志文件
+*.log
+output.log
+
+# 私钥文件
+keys/*.key
+*.key
+*.pem
+
+# 编译产物 (Linux/Windows)
+*.exe
+fan-chain
+fan-chain-linux
+fan-chain.new
+goapi/goapi
+goapi/goapi_linux
+tools/check_backup_db
+tools/rebuild_transfer_index
+tools/stake_linux
+
+# 备份文件
+*.bak
+*.patch
+*.pre_reorg
+backups/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# Go
+go.sum

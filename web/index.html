@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAN链浏览器 - 量子安全区块链</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/" class="active">首页</a></li>
+                
+                <li><a href="/blocks.html">区块</a></li>
+                <li><a href="/transactions.html">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">当前高度</div>
+                <div class="stat-value" id="currentHeight">-</div>
+                <div class="stat-desc">最新区块高度</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">当前节点</div>
+                <div class="stat-value" id="nodeNumber">-</div>
+                <div class="stat-desc" id="nodeAddress" style="font-size: 0.7em; word-break: break-all;">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">活跃节点</div>
+                <div class="stat-value" id="activeNodes">-</div>
+                <div class="stat-desc">P2P网络节点</div>
+            </div>
+        </div>
+
+        <!-- 最新区块 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">最新区块</h2>
+                <a href="/blocks.html" class="card-action">查看全部 →</a>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>高度</th>
+                            <th>出块者</th>
+                            <th>交易数</th>
+                            <th>哈希</th>
+                            <th>时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="latestBlocks">
+                        <tr>
+                            <td colspan="5" class="loading">
+                                <div class="spinner"></div>
+                                <div>加载中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 最新交易 -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">最新交易</h2>
+                <a href="/transactions.html" class="card-action">查看全部 →</a>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>交易哈希</th>
+                            <th>类型</th>
+                            <th>发送方</th>
+                            <th>接收方</th>
+                            <th>金额</th>
+                            <th>时间</th>
+                        </tr>
+                    </thead>
+                    <tbody id="latestTransactions">
+                        <tr>
+                            <td colspan="6" class="loading">
+                                <div class="spinner"></div>
+                                <div>加载中...</div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+        <p>永不增发 · 永不销毁 · 半隐私公链</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let pollInterval = null;
+        const POLL_INTERVAL_MS = 5000; // 5秒轮询一次
+
+        // 初始化页面
+        async function init() {
+            try {
+                // 加载节点状态
+                await loadStatus();
+
+                // 加载最新区块
+                await loadLatestBlocks();
+
+                // 加载最新交易
+                await loadLatestTransactions();
+
+                // 启动轮询自动刷新
+                startPolling();
+            } catch (error) {
+                console.error('初始化失败:', error);
+            }
+        }
+
+        // 加载节点状态
+        async function loadStatus() {
+            try {
+                const status = await API.getStatus();
+                document.getElementById('currentHeight').textContent = status.height || '-';
+                document.getElementById('activeNodes').textContent = (status.peers || 0) + 1;
+
+                // 显示当前节点信息（直接从API获取node_name）
+                const address = status.address || '';
+                const nodeName = status.node_name || address.substring(0, 8) || 'Unknown';
+                document.getElementById('nodeNumber').textContent = nodeName;
+                document.getElementById('nodeAddress').textContent = address || '-';
+            } catch (error) {
+                console.error('加载状态失败:', error);
+            }
+        }
+
+        // 加载最新区块
+        async function loadLatestBlocks() {
+            try {
+                const data = await API.getBlocks(1, 10);
+                const tbody = document.getElementById('latestBlocks');
+
+                if (!data.blocks || data.blocks.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">暂无数据</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.blocks.map(block => `
+                    <tr>
+                        <td><a href="/block.html?height=${block.height}" class="hash-link">#${block.height}</a></td>
+                        <td><a href="/account.html?address=${block.proposer}" class="hash-link">${Utils.truncateHash(block.proposer, 8, 6)}</a></td>
+                        <td>${block.tx_count || 0}</td>
+                        <td><a href="/block.html?height=${block.height}" class="hash-link">${Utils.truncateHash(block.hash)}</a></td>
+                        <td class="timestamp">${Utils.formatTimestamp(block.timestamp)}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('加载区块失败:', error);
+                document.getElementById('latestBlocks').innerHTML =
+                    '<tr><td colspan="5" class="empty-state">加载失败</td></tr>';
+            }
+        }
+
+        // 加载最新交易
+        async function loadLatestTransactions() {
+            try {
+                const data = await API.getTransactions(1, 10);
+                const tbody = document.getElementById('latestTransactions');
+
+                if (!data.transactions || data.transactions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">暂无数据</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.transactions.map(tx => `
+                    <tr>
+                        <td><a href="/transaction.html?hash=${tx.hash}" class="hash-link">${Utils.truncateHash(tx.hash)}</a></td>
+                        <td><span class="badge badge-${Utils.getTxTypeBadge(tx.type)}">${Utils.getTxTypeText(tx.type)}</span></td>
+                        <td><a href="/account.html?address=${tx.from}" class="hash-link">${Utils.truncateHash(tx.from, 8, 6)}</a></td>
+                        <td>${tx.to ? `<a href="/account.html?address=${tx.to}" class="hash-link">${Utils.truncateHash(tx.to, 8, 6)}</a>` : '-'}</td>
+                        <td class="amount">${Utils.formatAmount(tx.amount)}</td>
+                        <td class="timestamp">${Utils.formatTimestamp(tx.timestamp)}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('加载交易失败:', error);
+                document.getElementById('latestTransactions').innerHTML =
+                    '<tr><td colspan="6" class="empty-state">加载失败</td></tr>';
+            }
+        }
+
+        // 启动轮询
+        function startPolling() {
+            // 每5秒刷新数据
+            pollInterval = setInterval(async () => {
+                try {
+                    await loadStatus();
+                    await loadLatestBlocks();
+                    await loadLatestTransactions();
+                } catch (error) {
+                    console.error('轮询刷新失败:', error);
+                }
+            }, POLL_INTERVAL_MS);
+        }
+
+        // 停止轮询
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+
+        // 页面卸载时停止轮询
+        window.addEventListener('beforeunload', () => {
+            stopPolling();
+        });
+    </script>
+</body>
+</html>

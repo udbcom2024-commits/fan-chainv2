@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易详情 - FAN链浏览器</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .detail-grid {
+            display: grid;
+            gap: 16px;
+            padding: 24px;
+        }
+
+        .detail-row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 20px;
+            padding: 16px 0;
+            border-bottom: 1px solid var(--border-color);
+            align-items: start;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding-top: 4px;
+        }
+
+        .detail-value {
+            font-size: 15px;
+            color: var(--text-primary);
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .detail-value.large {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background-color: var(--secondary-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            margin-left: 12px;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--hover-bg);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+        }
+
+        .status-success {
+            background-color: rgba(46, 204, 113, 0.15);
+            color: var(--accent-green);
+        }
+
+        .status-pending {
+            background-color: rgba(241, 196, 15, 0.15);
+            color: #f1c40f;
+        }
+
+        .status-failed {
+            background-color: rgba(231, 76, 60, 0.15);
+            color: var(--accent-red);
+        }
+
+        .transfer-visual {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 20px;
+            background-color: var(--secondary-bg);
+            border-radius: 8px;
+            font-family: inherit;
+        }
+
+        .transfer-address {
+            flex: 1;
+            text-align: center;
+        }
+
+        .transfer-arrow {
+            font-size: 24px;
+            color: var(--accent-blue);
+        }
+
+        .transfer-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .error-message {
+            background-color: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--accent-red);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px;
+            color: var(--accent-red);
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .detail-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .copy-btn {
+                margin-left: 0;
+                margin-top: 8px;
+            }
+
+            .transfer-visual {
+                flex-direction: column;
+            }
+
+            .transfer-arrow {
+                transform: rotate(90deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <div class="logo-icon">F</div>
+                <span>FAN链浏览器</span>
+            </a>
+            <ul class="nav-menu">
+                <li><a href="/">首页</a></li>
+                <li><a href="/blocks.html">区块</a></li>
+                <li><a href="/transactions.html" class="active">交易</a></li>
+                <li><a href="/transfers.html">转账</a></li>
+                <li><a href="/accounts.html">账户</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- 主容器 -->
+    <div class="container">
+        <h1 style="margin-bottom: 30px; font-size: 32px;">交易详情</h1>
+
+        <!-- 交易信息卡片 -->
+        <div class="card" id="transactionCard">
+            <div class="card-header">
+                <h2 class="card-title">交易信息</h2>
+            </div>
+
+            <div id="transactionContent">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer">
+        <p>FAN链 - 量子安全区块链 | NIST Level 3 | ML-DSA-65 签名算法</p>
+    </footer>
+
+    <script src="/js/api.js"></script>
+    <script>
+        // 从URL获取交易哈希
+        function getHashFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('hash');
+        }
+
+        // 初始化页面
+        async function init() {
+            const hash = getHashFromURL();
+            if (!hash) {
+                showError('未指定交易哈希');
+                return;
+            }
+
+            await loadTransaction(hash);
+        }
+
+        // 加载交易详情
+        async function loadTransaction(hash) {
+            try {
+                const tx = await API.getTransaction(hash);
+                displayTransaction(tx);
+            } catch (error) {
+                console.error('加载交易失败:', error);
+                showError('加载交易失败: ' + error.message);
+            }
+        }
+
+        // 显示交易信息
+        function displayTransaction(tx) {
+            const content = document.getElementById('transactionContent');
+
+            // 构建转账可视化（如果是转账类型）
+            let transferVisual = '';
+            if (tx.to) {
+                transferVisual = `
+                    <div class="detail-row">
+                        <div class="detail-label">转账流向</div>
+                        <div class="detail-value">
+                            <div class="transfer-visual">
+                                <div class="transfer-address">
+                                    <div class="transfer-label">发送方</div>
+                                    <a href="/account.html?address=${tx.from}" class="hash-link">
+                                        ${Utils.truncateHash(tx.from, 10, 8)}
+                                    </a>
+                                </div>
+                                <div class="transfer-arrow">→</div>
+                                <div class="transfer-address">
+                                    <div class="transfer-label">接收方</div>
+                                    <a href="/account.html?address=${tx.to}" class="hash-link">
+                                        ${Utils.truncateHash(tx.to, 10, 8)}
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 确定交易状态
+            const status = tx.status || 'success';
+            const statusClass = status === 'success' ? 'status-success' :
+                               status === 'pending' ? 'status-pending' : 'status-failed';
+            const statusText = status === 'success' ? '✓ 成功' :
+                              status === 'pending' ? '⏳ 待确认' : '✗ 失败';
+
+            content.innerHTML = `
+                <div class="detail-grid">
+                    <div class="detail-row">
+                        <div class="detail-label">交易状态</div>
+                        <div class="detail-value">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">交易哈希</div>
+                        <div class="detail-value">
+                            ${tx.hash}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${tx.hash}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">交易类型</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            <span class="badge badge-${Utils.getTxTypeBadge(tx.type)}">
+                                ${Utils.getTxTypeText(tx.type)}
+                            </span>
+                        </div>
+                    </div>
+                    ${transferVisual}
+                    <div class="detail-row">
+                        <div class="detail-label">发送方</div>
+                        <div class="detail-value">
+                            <a href="/account.html?address=${tx.from}" class="hash-link">${tx.from}</a>
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${tx.from}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    ${tx.to ? `
+                    <div class="detail-row">
+                        <div class="detail-label">接收方</div>
+                        <div class="detail-value">
+                            <a href="/account.html?address=${tx.to}" class="hash-link">${tx.to}</a>
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${tx.to}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    ` : ''}
+                    <div class="detail-row">
+                        <div class="detail-label">金额</div>
+                        <div class="detail-value large" style="color: var(--accent-green);">
+                            ${Utils.formatAmount(tx.amount)}
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">手续费</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${Utils.formatAmount(tx.fee || 0)}
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">Nonce</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${tx.nonce !== undefined ? tx.nonce : '-'}
+                        </div>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-label">时间戳</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            ${Utils.formatFullTime(tx.timestamp)}
+                            <span style="color: var(--text-secondary); margin-left: 12px;">(${Utils.formatTimestamp(tx.timestamp)})</span>
+                        </div>
+                    </div>
+                    ${tx.block_height !== undefined ? `
+                    <div class="detail-row">
+                        <div class="detail-label">所在区块</div>
+                        <div class="detail-value" style="font-family: inherit;">
+                            <a href="/block.html?height=${tx.block_height}" class="hash-link">
+                                #${tx.block_height}
+                            </a>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${tx.signature ? `
+                    <div class="detail-row">
+                        <div class="detail-label">签名</div>
+                        <div class="detail-value">
+                            ${tx.signature}
+                            <button class="copy-btn" onclick="Utils.copyToClipboard('${tx.signature}')">
+                                📋 复制
+                            </button>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${tx.data ? `
+                    <div class="detail-row">
+                        <div class="detail-label">附加数据</div>
+                        <div class="detail-value">
+                            ${tx.data}
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // 显示错误
+        function showError(message) {
+            const content = document.getElementById('transactionContent');
+            content.innerHTML = `
+                <div class="error-message">
+                    <h3>错误</h3>
+                    <p>${message}</p>
+                    <button onclick="window.location.href='/transactions.html'" style="margin-top: 16px; padding: 10px 20px; background-color: var(--accent-blue); color: white; border: none; border-radius: 6px; cursor: pointer;">
+                        返回交易列表
+                    </button>
+                </div>
+            `;
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
