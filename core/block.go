@@ -163,7 +163,7 @@ func (b *Block) ValidateWithOptions(prevBlock *Block, skipTimestampCheck bool) e
 	// 3.1. 检查时间戳不能太超前（防止时间戳攻击）
 	// 同步模式下跳过未来时间检查
 	if !skipTimestampCheck {
-		maxFutureTime := time.Now().Unix() + 60 // 允许60秒的时间偏差
+		maxFutureTime := time.Now().UnixMilli() + 60000 // 允许60秒的时间偏差（毫秒级）
 		if b.Header.Timestamp > maxFutureTime {
 			return fmt.Errorf("invalid timestamp: too far in future (block: %d, max: %d)",
 				b.Header.Timestamp, maxFutureTime)
@@ -207,53 +207,15 @@ func (b *Block) String() string {
 }
 
 // 创建创世区块
+// 设计原则：只有创世地址（F25gxrj3tppc07hunne7hztvde5gkaw78f3xa）应当硬编码
+// 所有其他地址必须通过配置文件或交易动态添加
 func CreateGenesisBlock() *Block {
-	// Node2地址（用于测试） - 必须与node1创世块中的地址保持一致
-	const Node2Address = "F1r06tlcaoiegfl7w6d1b84g88njhkd3wq57x"
-	const Node2InitialFunds = uint64(1000000000000) // 1M FAN用于质押
-
-	// 创世验证者质押金额（10M FAN = 10倍普通验证者）
-	GenesisStake := ValidatorStakeRequired() * 10
-
-	// 创世交易1：给创世地址全部代币减去Node2的初始资金
+	// 创世交易：给创世地址分配全部代币（14亿FAN）
 	genesisTx := &Transaction{
 		Type:      TxReward,
 		From:      "",
 		To:        GenesisAddress,
-		Amount:    TotalSupply - Node2InitialFunds,
-		GasFee:    0,
-		Nonce:     0,
-		Timestamp: GenesisTimestamp(),
-	}
-
-	// 创世交易2：给Node2地址初始资金
-	node2Tx := &Transaction{
-		Type:      TxReward,
-		From:      "",
-		To:        Node2Address,
-		Amount:    Node2InitialFunds,
-		GasFee:    0,
-		Nonce:     0,
-		Timestamp: GenesisTimestamp(),
-	}
-
-	// 创世交易3：创世地址自动质押为验证者（特权交易，无需签名）
-	genesisStakeTx := &Transaction{
-		Type:      TxStake,
-		From:      GenesisAddress,
-		To:        GenesisAddress,
-		Amount:    GenesisStake,
-		GasFee:    0,
-		Nonce:     0,
-		Timestamp: GenesisTimestamp(),
-	}
-
-	// 创世交易4：Node2自动质押为验证者（特权交易，无需签名）
-	node2StakeTx := &Transaction{
-		Type:      TxStake,
-		From:      Node2Address,
-		To:        Node2Address,
-		Amount:    ValidatorStakeRequired(), // 1M FAN
+		Amount:    TotalSupply, // 1400000000000000 最小单位
 		GasFee:    0,
 		Nonce:     0,
 		Timestamp: GenesisTimestamp(),
@@ -266,7 +228,7 @@ func CreateGenesisBlock() *Block {
 			Timestamp:    GenesisTimestamp(),
 			Proposer:     GenesisAddress,
 		},
-		Transactions: []*Transaction{genesisTx, node2Tx, genesisStakeTx, node2StakeTx},
+		Transactions: []*Transaction{genesisTx},
 	}
 
 	block.Header.TxRoot = block.CalculateTxRoot()

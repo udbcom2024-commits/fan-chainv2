@@ -344,6 +344,41 @@ func (s *Server) RequestCheckpointFromPeers(count uint64) {
 	}
 }
 
+
+// 【P6】GetPeerCount 返回当前连接的peer数量
+func (s *Server) GetPeerCount() int {
+	return s.PeerCount()
+}
+
+// 【P6】RequestCheckpointFromBestPeer 从最高高度的peer请求checkpoint
+func (s *Server) RequestCheckpointFromBestPeer() {
+	s.peersMu.RLock()
+	defer s.peersMu.RUnlock()
+
+	var bestPeer *Peer
+	var bestHeight uint64
+
+	for _, peer := range s.peers {
+		if peer.IsConnected() {
+			peerHeight := peer.GetHeight()
+			if peerHeight > bestHeight {
+				bestHeight = peerHeight
+				bestPeer = peer
+			}
+		}
+	}
+
+	if bestPeer != nil {
+		log.Printf("【P6】向大哥 %s (高度 %d) 请求checkpoint", bestPeer.host, bestHeight)
+		msg, err := NewMessage(MsgGetCheckpoint, &GetCheckpointMessage{Count: 1})
+		if err != nil {
+			log.Printf("Failed to create checkpoint request: %v", err)
+			return
+		}
+		bestPeer.SendMessage(msg)
+	}
+}
+
 // 设置交易处理回调
 func (s *Server) SetHandleReceivedTransaction(fn func(*core.Transaction) error) {
 	s.handleReceivedTransaction = fn

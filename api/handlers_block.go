@@ -58,12 +58,13 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 
 	// 解析分页参数
 	query := r.URL.Query()
-	offset := 0
+	page := 1
 	limit := 20
 
-	if offsetStr := query.Get("offset"); offsetStr != "" {
-		if val, err := strconv.Atoi(offsetStr); err == nil && val >= 0 {
-			offset = val
+	// 支持page参数（前端使用）
+	if pageStr := query.Get("page"); pageStr != "" {
+		if val, err := strconv.Atoi(pageStr); err == nil && val > 0 {
+			page = val
 		}
 	}
 
@@ -72,6 +73,9 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 			limit = val
 		}
 	}
+
+	// 将page转换为offset
+	offset := (page - 1) * limit
 
 	// 【修复】使用数据库中已保存的最新高度，而不是内存中的虚拟高度
 	currentHeight, _ := s.db.GetLatestHeight()
@@ -106,12 +110,19 @@ func (s *Server) handleBlocks(w http.ResponseWriter, r *http.Request) {
 		startHeight--
 	}
 
+	// 计算总页数
+	total := int(currentHeight)
+	totalPages := (total + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
 	response := map[string]interface{}{
-		"blocks":       blocks,
-		"count":        len(blocks),
-		"offset":       offset,
-		"limit":        limit,
-		"total_height": currentHeight,
+		"blocks":      blocks,
+		"total":       total,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": totalPages,
 	}
 
 	writeJSON(w, response)

@@ -174,14 +174,15 @@ func (tx *Transaction) Validate(skipTimestampCheck bool) error {
 
 	// 7. 验证时间戳（防止时间戳伪造）
 	// 注意：同步历史区块时跳过此检查，因为历史交易的时间戳可能与当前时间相差很远
+	// 时间戳使用毫秒级
 	if !skipTimestampCheck {
-		currentTime := time.Now().Unix()
+		currentTime := time.Now().UnixMilli() // 毫秒级
 		timeDiff := tx.Timestamp - currentTime
 		if timeDiff < 0 {
 			timeDiff = -timeDiff
 		}
 		if timeDiff > MaxTimestampDrift() {
-			return fmt.Errorf("invalid timestamp: transaction time %d differs from current time %d by %d seconds (max allowed: %d seconds)",
+			return fmt.Errorf("invalid timestamp: transaction time %d differs from current time %d by %d ms (max allowed: %d ms)",
 				tx.Timestamp, currentTime, timeDiff, MaxTimestampDrift())
 		}
 	}

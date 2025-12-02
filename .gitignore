@@ -39,3 +39,15 @@ Thumbs.db
 
 # Go
 go.sum
+
+# Backup scripts
+backup_data.sh
+*.sh
+
+# Binary files
+fan-chain-linux-new
+tools/check_accounts
+tools/check_accounts_full
+tools/check_accounts_full_linux
+tools/fix_supply
+tools/rebuild_transfer_index_linux

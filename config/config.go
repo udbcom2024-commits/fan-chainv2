@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -112,7 +111,7 @@ func (cfg *Config) EnsureDirs() error {
 	return os.MkdirAll(cfg.DataDir, 0700)
 }
 
-// 获取数据库路径
+// 获取数据库路径（返回DataDir，OpenDatabase会自动添加blockchain.db子目录）
 func (cfg *Config) DBPath() string {
-	return filepath.Join(cfg.DataDir, "blockchain.db")
+	return cfg.DataDir
 }

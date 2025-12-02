@@ -28,20 +28,27 @@ func main() {
 	existingCount, _ := db.GetTransferCount()
 	fmt.Printf("Existing transfer index count: %d\n", existingCount)
 
-	// 获取最新高度
-	latestHeight, err := db.GetLatestHeight()
+	// 直接扫描数据库获取所有存在的区块高度
+	fmt.Println("Scanning database for blocks...")
+	heights, err := db.GetAllBlockHeights()
 	if err != nil {
-		log.Fatalf("Failed to get latest height: %v", err)
+		log.Fatalf("Failed to scan block heights: %v", err)
 	}
-	fmt.Printf("Latest block height: %d\n", latestHeight)
+	fmt.Printf("Found %d blocks in database\n", len(heights))
+
+	if len(heights) == 0 {
+		fmt.Println("No blocks found, nothing to rebuild")
+		return
+	}
 
 	// 扫描所有区块并建立索引
 	fmt.Println("Rebuilding transfer index...")
 	count := 0
-	for height := uint64(1); height <= latestHeight; height++ {
+	processed := 0
+	for _, height := range heights {
 		block, err := db.GetBlockByHeight(height)
 		if err != nil {
-			continue // 跳过不存在的区块
+			continue // 跳过无法读取的区块
 		}
 
 		for _, tx := range block.Transactions {
@@ -54,13 +61,14 @@ func main() {
 			}
 		}
 
+		processed++
 		// 每1000块输出一次进度
-		if height%1000 == 0 {
-			fmt.Printf("Progress: height %d, indexed %d transfers\n", height, count)
+		if processed%1000 == 0 {
+			fmt.Printf("Progress: processed %d blocks, indexed %d transfers\n", processed, count)
 		}
 	}
 
-	fmt.Printf("\nDone! Indexed %d transfers from %d blocks\n", count, latestHeight)
+	fmt.Printf("\nDone! Indexed %d transfers from %d blocks\n", count, len(heights))
 
 	// 验证
 	finalCount, _ := db.GetTransferCount()

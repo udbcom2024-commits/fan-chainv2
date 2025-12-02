@@ -51,13 +51,12 @@ func (n *Node) InitializeP2P() error {
 				}
 			}
 
-			if err := n.state.Commit(); err != nil {
+			// 【P0原子性】使用带P0验证的提交
+			if err := n.state.CommitWithP0Verify(block.Header.Height); err != nil {
 				return err
 			}
 
-			// P0验证移至Checkpoint生成时（不在同步区块时验证）
-			// 原因：同步区块时缓存和数据库状态可能不完全同步，导致误报
-			log.Printf("区块 #%d 同步完成", block.Header.Height)
+			log.Printf("区块 #%d 同步完成 (P0验证通过)", block.Header.Height)
 
 
 			// 添加区块到区块链
@@ -93,13 +92,12 @@ func (n *Node) InitializeP2P() error {
 			}
 		}
 
-		if err := n.state.Commit(); err != nil {
+		// 【P0原子性】使用带P0验证的提交
+		if err := n.state.CommitWithP0Verify(block.Header.Height); err != nil {
 			return err
 		}
 
-		// P0验证移至Checkpoint生成时（不在同步区块时验证）
-		// 原因：同步区块时缓存和数据库状态可能不完全同步，导致误报
-		log.Printf("历史区块 #%d 同步完成", block.Header.Height)
+		log.Printf("历史区块 #%d 同步完成 (P0验证通过)", block.Header.Height)
 
 
 		// 添加区块到区块链（跳过时间戳验证�?
@@ -502,13 +500,27 @@ func (n *Node) applyCheckpoint(checkpoint *core.Checkpoint) error {
 	}
 
 	// 【分叉处理】如果高度相同但hash不同，说明发生了分叉
-	// 接受来自网络的checkpoint（假设来自权威节点），并触发链重组
+	// 按毫秒级时间戳裁决：时间戳小的赢（先出块的是大哥）
 	if checkpoint.Height == localCheckpointHeight && localCheckpointHeight > 0 {
 		if checkpoint.BlockHash != localCheckpointHash {
+			// 获取本地区块的时间戳
+			localBlock := n.chain.GetLatestBlock()
+			localTimestamp := localBlock.Header.Timestamp
+			peerTimestamp := checkpoint.Timestamp
+
 			log.Printf("⚠️  FORK DETECTED at height %d: local hash=%x, network hash=%x",
 				checkpoint.Height, localCheckpointHash.Bytes()[:8], checkpoint.BlockHash.Bytes()[:8])
-			log.Printf("🔄 Accepting network checkpoint to resolve fork...")
-			// 继续处理，强制使用网络的checkpoint
+			log.Printf("⏱️  Timestamp comparison: local=%d, peer=%d", localTimestamp, peerTimestamp)
+
+			if peerTimestamp < localTimestamp {
+				// 对方时间戳更小（先出块），我应该回滚追随对方
+				log.Printf("🔄 Peer wins (earlier timestamp), I will reorg to follow peer's chain")
+				// 继续处理，强制使用网络的checkpoint
+			} else {
+				// 我的时间戳更小或相等，保持自己的链，拒绝对方
+				log.Printf("✓ I win (earlier or equal timestamp), rejecting peer's checkpoint")
+				return nil
+			}
 		} else {
 			// 相同高度相同hash，无需更新
 			log.Printf("✓ Checkpoint at height %d already up to date (same hash)", checkpoint.Height)

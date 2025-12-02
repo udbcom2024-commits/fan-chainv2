@@ -73,12 +73,13 @@
     <script>
         let currentPage = 1;
         const pageSize = 20;
-        let ws = null;
+        let pollInterval = null;
+        const POLL_INTERVAL_MS = 5000;
 
         // 初始化
         async function init() {
             await loadAccounts();
-            // 账户列表变化不频繁，不需要WebSocket实时刷新
+            startPolling();
         }
 
         // 获取账户类型文本
@@ -132,6 +133,23 @@
             }
         }
 
+        // 启动轮询
+        function startPolling() {
+            pollInterval = setInterval(async () => {
+                if (currentPage === 1) {
+                    await loadAccounts();
+                }
+            }, POLL_INTERVAL_MS);
+        }
+
+        // 停止轮询
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
         // 更新分页按钮状态
         function updatePagination(hasPrev, hasNext) {
             document.getElementById('prevBtn').disabled = !hasPrev;
@@ -154,9 +172,13 @@
             window.scrollTo(0, 0);
         }
 
-
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', init);
+
+        // 页面卸载时停止轮询
+        window.addEventListener('beforeunload', () => {
+            stopPolling();
+        });
     </script>
 </body>
 </html>

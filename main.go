@@ -46,6 +46,12 @@ func main() {
 		log.Fatalf("Failed to initialize blockchain: %v", err)
 	}
 
+	// 【原子性恢复】检测state与block高度差异，必要时重放区块
+	// 如果崩溃发生在区块保存后、状态提交前，这里会自动恢复
+	if err := node.RecoverStateIfNeeded(); err != nil {
+		log.Fatalf("Failed to recover state: %v", err)
+	}
+
 	if err := node.InitializeValidators(); err != nil {
 		log.Fatalf("Failed to initialize validators: %v", err)
 	}
@@ -94,7 +100,11 @@ func main() {
 		log.Fatalf("Failed to initialize API: %v", err)
 	}
 
-	if len(cfg.SeedPeers) > 0 {
+	// 【P5.1协议】单节点检测：seed_peers为空时进入孤立模式
+	if len(cfg.SeedPeers) == 0 {
+		log.Printf("🔥 【P5.1】No seed peers configured, entering isolated mode (单节点生存)")
+		node.isolatedMode = true
+	} else {
 		time.Sleep(10 * time.Second)
 	}
 

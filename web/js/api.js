@@ -84,9 +84,9 @@ const Utils = {
         return fan.toString() + ' FAN';
     },
 
-    // 格式化时间戳
+    // 格式化时间戳（毫秒级）
     formatTimestamp(timestamp) {
-        const date = new Date(timestamp * 1000);
+        const date = new Date(timestamp); // 毫秒级时间戳，无需乘1000
         const now = new Date();
         const diff = Math.floor((now - date) / 1000);
 
@@ -133,13 +133,13 @@ const Utils = {
     },
 
     // 获取交易类型文本
+    // Type=0:转账, Type=1:质押, Type=2:解押, Type=3:奖励
     getTxTypeText(type) {
         const types = {
-            1: '转账',
-            2: '质押',
-            3: '奖励',
-            4: '解押',
-            5: '惩罚'
+            0: '转账',
+            1: '质押',
+            2: '解押',
+            3: '奖励'
         };
         return types[type] || '未知';
     },
@@ -147,11 +147,10 @@ const Utils = {
     // 获取交易类型徽章类别
     getTxTypeBadge(type) {
         const badges = {
-            1: 'info',
-            2: 'success',
-            3: 'success',
-            4: 'warning',
-            5: 'danger'
+            0: 'info',      // 转账 - 蓝色
+            1: 'success',   // 质押 - 绿色
+            2: 'warning',   // 解押 - 黄色
+            3: 'success'    // 奖励 - 绿色
         };
         return badges[type] || 'info';
     },

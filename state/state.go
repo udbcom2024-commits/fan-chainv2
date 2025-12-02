@@ -119,17 +119,94 @@ func (sm *StateManager) UpdateAccount(account *core.Account) {
 	sm.dirtyAccounts[account.Address] = true
 }
 
-// 提交状态（写入数据库）
+// 提交状态（写入数据库）- 使用 WriteBatch 原子写入
 func (sm *StateManager) Commit() error {
+	if len(sm.dirtyAccounts) == 0 {
+		return nil // 没有脏账户，无需写入
+	}
+
+	// 收集所有脏账户
+	accounts := make([]*core.Account, 0, len(sm.dirtyAccounts))
 	for address := range sm.dirtyAccounts {
 		acc := sm.accountCache[address]
-		if err := sm.db.SaveAccount(acc); err != nil {
-			return fmt.Errorf("failed to save account %s: %v", address, err)
-		}
+		accounts = append(accounts, acc)
+	}
+
+	// 使用 WriteBatch 原子写入所有账户
+	if err := sm.db.SaveAccountsBatch(accounts); err != nil {
+		return fmt.Errorf("failed to batch save accounts: %v", err)
 	}
 
 	// 清空脏标记
 	sm.dirtyAccounts = make(map[string]bool)
+	return nil
+}
+
+// CommitWithP0Verify 带 P0 验证的提交（区块提交时使用）
+// 在写入数据库前验证总量是否等于 1.4B，如果不等则拒绝提交
+// height: 当前区块高度，用于state高度追踪（原子性恢复）
+// 返回: error（如果P0验证失败或写入失败）
+func (sm *StateManager) CommitWithP0Verify(height uint64) error {
+	// 【P0验证】在写入前计算新的总量
+	// 合并数据库账户和缓存账户
+	dbAccounts, err := sm.db.GetAllAccounts()
+	if err != nil {
+		return fmt.Errorf("P0验证失败: 无法获取数据库账户: %v", err)
+	}
+
+	// 构建合并的账户映射
+	accountMap := make(map[string]*core.Account)
+	for _, acc := range dbAccounts {
+		accountMap[acc.Address] = acc
+	}
+	// 用缓存（脏账户）覆盖
+	for addr, acc := range sm.accountCache {
+		accountMap[addr] = acc
+	}
+
+	// 计算总量
+	var totalSupply uint64
+	for _, acc := range accountMap {
+		totalSupply += acc.AvailableBalance + acc.StakedBalance
+	}
+
+	// 验证 P0
+	if totalSupply != TOTAL_SUPPLY {
+		log.Printf("🚨🚨🚨 P0验证失败！拒绝提交状态！")
+		log.Printf("   预期总量: %d", TOTAL_SUPPLY)
+		log.Printf("   实际总量: %d", totalSupply)
+		log.Printf("   差值: %d", int64(totalSupply)-int64(TOTAL_SUPPLY))
+
+		// 打印详细账户信息用于调试
+		log.Printf("   脏账户列表(%d个):", len(sm.dirtyAccounts))
+		for addr := range sm.dirtyAccounts {
+			acc := sm.accountCache[addr]
+			log.Printf("     %s: avail=%d, staked=%d", addr, acc.AvailableBalance, acc.StakedBalance)
+		}
+
+		return fmt.Errorf("P0验证失败: 总量=%d, 预期=%d, 差值=%d",
+			totalSupply, TOTAL_SUPPLY, int64(totalSupply)-int64(TOTAL_SUPPLY))
+	}
+
+	// P0验证通过，收集脏账户
+	accounts := make([]*core.Account, 0, len(sm.dirtyAccounts))
+	for address := range sm.dirtyAccounts {
+		acc := sm.accountCache[address]
+		accounts = append(accounts, acc)
+	}
+
+	// 【原子性】写入账户并更新state高度
+	if err := sm.db.SaveAccountsBatchWithHeight(accounts, height); err != nil {
+		return fmt.Errorf("failed to batch save accounts with height: %v", err)
+	}
+
+	// 更新追踪器
+	sm.totalSupplyTracker = totalSupply
+
+	// 清空脏标记
+	sm.dirtyAccounts = make(map[string]bool)
+
+	log.Printf("✅ P0验证通过，状态已提交（高度=%d，%d个账户，总量=%d）", height, len(accounts), totalSupply)
 	return nil
 }
 

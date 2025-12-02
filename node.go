@@ -38,6 +38,9 @@ type Node struct {
 	needCheckpointBlock     bool   // 是否需要请求checkpoint高度的完整区块
 	checkpointHeight        uint64 // checkpoint的高度
 	needSyncCheckpointBlock bool   // 【Ephemeral】是否需要同步真实的checkpoint区块
+
+	// 【P5.1协议】孤立模式标志
+	isolatedMode bool // 是否处于孤立模式（所有peers不可达时激活）
 }
 
 func NewNode(cfg *config.Config) (*Node, error) {
@@ -156,4 +159,70 @@ func (n *Node) getPeerCount() int {
 		return 0
 	}
 	return n.p2pServer.PeerCount()
+}
+
+// RecoverStateIfNeeded 启动时检测并恢复state与block的一致性
+// 如果 block_height > state_height，说明崩溃发生在区块保存后、状态提交前
+// 需要重放缺失的区块来恢复状态
+func (n *Node) RecoverStateIfNeeded() error {
+	blockHeight, err := n.db.GetLatestHeight()
+	if err != nil {
+		return fmt.Errorf("failed to get block height: %v", err)
+	}
+
+	stateHeight, err := n.db.GetStateHeight()
+	if err != nil {
+		return fmt.Errorf("failed to get state height: %v", err)
+	}
+
+	log.Printf("📊 Recovery check: block_height=%d, state_height=%d", blockHeight, stateHeight)
+
+	// 【P5.1】从checkpoint恢复时，state_height=0但block_height>0是正常的
+	// 此时应该信任checkpoint的state，直接同步state_height到block_height
+	if stateHeight == 0 && blockHeight > 0 {
+		log.Printf("📌 【Checkpoint恢复】state_height=0, 信任checkpoint state, 同步到 block_height=%d", blockHeight)
+		return n.db.GetStateStore().SaveStateHeight(blockHeight)
+	}
+
+	if blockHeight == stateHeight {
+		log.Printf("✓ State is consistent with blocks, no recovery needed")
+		return nil
+	}
+
+	if blockHeight < stateHeight {
+		// 异常情况：状态比区块新，不应该发生
+		log.Printf("⚠️  WARNING: state_height(%d) > block_height(%d), this should not happen!", stateHeight, blockHeight)
+		log.Printf("⚠️  Will reset state_height to match block_height")
+		return n.db.GetStateStore().SaveStateHeight(blockHeight)
+	}
+
+	// block_height > state_height：需要重放区块
+	log.Printf("🔄 Recovery needed: replaying blocks from %d to %d", stateHeight+1, blockHeight)
+
+	for height := stateHeight + 1; height <= blockHeight; height++ {
+		block, err := n.db.GetBlockByHeight(height)
+		if err != nil {
+			return fmt.Errorf("failed to get block %d for replay: %v", height, err)
+		}
+
+		log.Printf("  🔄 Replaying block #%d (%d txs)", height, len(block.Transactions))
+
+		// 执行区块中的交易
+		for _, tx := range block.Transactions {
+			if err := n.state.ExecuteTransaction(tx, true); err != nil {
+				log.Printf("  ⚠️  Warning: tx execution error in replay: %v", err)
+				// 在恢复模式下继续，不中断
+			}
+		}
+
+		// 提交状态并更新state_height
+		if err := n.state.CommitWithP0Verify(height); err != nil {
+			return fmt.Errorf("failed to commit state at height %d: %v", height, err)
+		}
+
+		log.Printf("  ✓ Block #%d replayed successfully", height)
+	}
+
+	log.Printf("✅ Recovery complete: state_height now matches block_height=%d", blockHeight)
+	return nil
 }

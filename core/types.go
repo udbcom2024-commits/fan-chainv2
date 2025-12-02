@@ -119,9 +119,9 @@ func BytesToUint64(b []byte) uint64 {
 	return binary.BigEndian.Uint64(b)
 }
 
-// 时间戳
+// 时间戳（毫秒级，提供更强确定性）
 func CurrentTimestamp() int64 {
-	return time.Now().Unix()
+	return time.Now().UnixMilli()
 }
 
 // JSON序列化辅助函数

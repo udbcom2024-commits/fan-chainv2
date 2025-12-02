@@ -147,8 +147,9 @@ func (n *Node) PerformChainReorganization(rollbackHeight uint64, correctBlock *c
 		}
 	}
 
-	if err := n.state.Commit(); err != nil {
-		return fmt.Errorf("failed to commit state: %v", err)
+	// 【P0原子性】使用带P0验证的提交
+	if err := n.state.CommitWithP0Verify(correctBlock.Header.Height); err != nil {
+		return fmt.Errorf("failed to commit state (P0 check): %v", err)
 	}
 
 	// 【REORG专用】直接更新链状态，跳过验证

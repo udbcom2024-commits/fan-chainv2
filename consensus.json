@@ -1,18 +1,18 @@
 {
-  "consensus_version": "1.2.0",
+  "consensus_version": "1.4.0",
   "consensus_hash": "",
   "chain_params": {
     "fan_unit": 1000000,
     "fan_decimals": 6,
     "genesis_address": "F25gxrj3tppc07hunne7hztvde5gkaw78f3xa",
-    "genesis_timestamp": 1700000000
+    "genesis_timestamp": 1700000000000
   },
   "block_params": {
     "block_interval_seconds": 5,
     "finality_blocks": 8,
-    "checkpoint_interval": 5,
+    "checkpoint_interval": 1,
     "checkpoint_keep_count": 3,
-    "max_timestamp_drift": 300,
+    "max_timestamp_drift": 300000,
     "max_block_size": 1048576,
     "block_data_threshold_percent": 80
   },

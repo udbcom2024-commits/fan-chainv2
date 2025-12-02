@@ -45,8 +45,8 @@ func NewPeer(conn net.Conn, outbound bool) *Peer {
 		writer:        bufio.NewWriter(conn),
 		outbound:      outbound,
 		connected:     true,
-		sendChan:      make(chan *Message, 100),
-		recvChan:      make(chan *Message, 100),
+		sendChan:      make(chan *Message, 500),
+		recvChan:      make(chan *Message, 1000),
 		closeChan:     make(chan struct{}),
 		lastHeartbeat: time.Now(),
 	}

@@ -149,6 +149,167 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+// 处理全局交易列表查询（所有类型交易，分页）
+// 从最新区块倒序获取所有交易（包括Type=0转账、Type=1质押、Type=2解押、Type=3区块奖励）
+func (s *Server) handleAllTransactions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 解析分页参数
+	page := 1
+	limit := 20
+
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		fmt.Sscanf(pageStr, "%d", &page)
+		if page < 1 {
+			page = 1
+		}
+	}
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+		if limit < 1 || limit > 100 {
+			limit = 20
+		}
+	}
+
+	// 获取最新高度
+	latestHeight, err := s.db.GetLatestHeight()
+	if err != nil || latestHeight == 0 {
+		// 没有区块，返回空列表
+		response := map[string]interface{}{
+			"transactions": []map[string]interface{}{},
+			"total":        0,
+			"page":         page,
+			"limit":        limit,
+			"total_pages":  1,
+		}
+		writeJSON(w, response)
+		return
+	}
+
+	// 从最新区块倒序收集交易，直到收集够 limit 条
+	txList := make([]map[string]interface{}, 0, limit)
+	offset := (page - 1) * limit
+	skipped := 0
+	collected := 0
+
+	// 从最新区块开始向前扫描
+	for height := latestHeight; height >= 1 && collected < limit; height-- {
+		block, err := s.db.GetBlockByHeight(height)
+		if err != nil || block == nil {
+			continue
+		}
+
+		// 倒序遍历区块内交易（最新的在前）
+		for i := len(block.Transactions) - 1; i >= 0 && collected < limit; i-- {
+			tx := block.Transactions[i]
+
+			// 跳过 offset 条记录
+			if skipped < offset {
+				skipped++
+				continue
+			}
+
+			txData := map[string]interface{}{
+				"hash":         fmt.Sprintf("%x", tx.Hash().Bytes()),
+				"type":         tx.Type,
+				"from":         tx.From,
+				"to":           tx.To,
+				"amount":       tx.Amount,
+				"gas_fee":      tx.GasFee,
+				"block_height": height,
+				"timestamp":    tx.Timestamp,
+				"nonce":        tx.Nonce,
+			}
+			txList = append(txList, txData)
+			collected++
+		}
+	}
+
+	// 估算总交易数（简化：假设每个区块平均1笔交易）
+	// 实际应该维护一个交易计数器，但这里简化处理
+	estimatedTotal := int(latestHeight)
+	totalPages := (estimatedTotal + limit - 1) / limit
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	response := map[string]interface{}{
+		"transactions": txList,
+		"total":        estimatedTotal,
+		"page":         page,
+		"limit":        limit,
+		"total_pages":  totalPages,
+	}
+
+	writeJSON(w, response)
+}
+
+// 处理搜索请求（区块高度、交易哈希、地址）
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "Search query required", http.StatusBadRequest)
+		return
+	}
+
+	result := map[string]interface{}{
+		"query": query,
+		"found": false,
+		"type":  "",
+	}
+
+	// 尝试解析为区块高度
+	var height uint64
+	if _, err := fmt.Sscanf(query, "%d", &height); err == nil {
+		block, _ := s.db.GetBlockByHeight(height)
+		if block != nil {
+			result["found"] = true
+			result["type"] = "block"
+			result["height"] = height
+			writeJSON(w, result)
+			return
+		}
+	}
+
+	// 尝试解析为地址
+	if len(query) == 37 && strings.HasPrefix(query, "F") {
+		account, _ := s.state.GetAccount(query)
+		if account != nil {
+			result["found"] = true
+			result["type"] = "account"
+			result["address"] = query
+			writeJSON(w, result)
+			return
+		}
+	}
+
+	// 尝试解析为交易哈希
+	if len(query) >= 10 {
+		hashBytes, err := hex.DecodeString(query)
+		if err == nil {
+			hash := core.BytesToHash(hashBytes)
+			tx, err := s.db.GetTransaction(hash)
+			if err == nil && tx != nil {
+				result["found"] = true
+				result["type"] = "transaction"
+				result["hash"] = query
+				writeJSON(w, result)
+				return
+			}
+		}
+	}
+
+	writeJSON(w, result)
+}
+
 // 处理转账列表查询（从数据库索引）
 func (s *Server) handleTransfers(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {

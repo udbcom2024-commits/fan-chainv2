@@ -79,52 +79,52 @@ func (db *Database) SaveBlockTimestamp(height uint64, timestamp int64) error {
 	return db.db.Put(key, value, nil)
 }
 
-// ========== 100天自动清理 ==========
+// ========== 区块剪枝（P4协议） ==========
 
-// 清理旧区块（根据配置的保留天数）
-func (db *Database) CleanupOldBlocks(currentTime int64) error {
-	// 从共识配置读取保留天数
+// CleanupOldBlocks 清理旧区块（已废弃，改用PruneBlocks）
+// 保留此函数签名以兼容旧代码调用，内部转发到PruneBlocks
+func (d *Database) CleanupOldBlocks(currentTime int64) error {
 	consensusConfig := core.GetConsensusConfig()
 	retentionDays := consensusConfig.StorageParams.LedgerRetentionDays
-	retentionTime := int64(retentionDays * 24 * 60 * 60) // 转换为秒
+	// 计算保留区块数：天数 × 每天区块数（86400秒/5秒 = 17280块/天）
+	keepBlocks := uint64(retentionDays * 17280)
+
+	count, err := d.PruneBlocks(keepBlocks)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		log.Printf("✓ PRUNE: Cleaned up %d chunk files (keeping %d days = %d blocks)", count, retentionDays, keepBlocks)
+	}
+
+	// 同时清理时间戳索引（s前缀）
+	d.pruneTimestampIndex(currentTime, retentionDays)
+
+	return nil
+}
+
+// pruneTimestampIndex 清理时间戳索引
+func (d *Database) pruneTimestampIndex(currentTime int64, retentionDays int) {
+	retentionTime := int64(retentionDays * 24 * 60 * 60)
 	cutoffTime := currentTime - retentionTime
 
-	// 查找需要删除的区块
-	iter := db.db.NewIterator(util.BytesPrefix([]byte("s")), nil)
+	iter := d.db.NewIterator(util.BytesPrefix([]byte("s")), nil)
 	defer iter.Release()
 
 	deletedCount := 0
 	for iter.Next() {
 		timestamp := int64(binary.BigEndian.Uint64(iter.Key()[1:]))
 		if timestamp >= cutoffTime {
-			break // 时间戳是递增的，后面的都不需要删除
+			break
 		}
-
-		height := binary.BigEndian.Uint64(iter.Value())
-
-		// 删除区块
-		block, err := db.GetBlockByHeight(height)
-		if err == nil {
-			// 删除区块数据
-			blockKey := makeBlockKey(block.Hash())
-			db.db.Delete(blockKey, nil)
-
-			// 删除高度映射
-			heightKey := makeHeightKey(height)
-			db.db.Delete(heightKey, nil)
-
-			// 删除时间戳索引
-			db.db.Delete(iter.Key(), nil)
-
-			deletedCount++
-		}
+		d.db.Delete(iter.Key(), nil)
+		deletedCount++
 	}
 
 	if deletedCount > 0 {
-		log.Printf("Cleaned up %d blocks older than %d days", deletedCount, consensusConfig.StorageParams.LedgerRetentionDays)
+		log.Printf("✓ PRUNE: Cleaned up %d timestamp index entries", deletedCount)
 	}
-
-	return iter.Error()
 }
 
 // 获取最旧区块的时间

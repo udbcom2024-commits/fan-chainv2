@@ -16,7 +16,7 @@ import (
 func (n *Node) StartBlockProduction() {
 	var lastProposer string
 	var waitCount int
-	const maxWaitTime = 3 // 15秒failover（3个区块周期 × 5秒）
+	const maxWaitTime = 1 // 5秒failover（1个区块周期 × 5秒）- 符合fan.md P5协议
 
 	// 【架构变更】验证者集合只从Checkpoint加载，不需要定时重载
 	// 初始加载会在节点启动时通过LoadLatestCheckpoint完成
@@ -83,7 +83,7 @@ func (n *Node) StartBlockProduction() {
 					}
 
 					// 没有大哥（所有peer都不比我高），可以Failover
-					log.Printf("⚠️ Validator %s timeout after %d blocks (15s), I will take over!", proposer[:10], maxWaitTime)
+					log.Printf("⚠️ Validator %s timeout after %d block (5s), I will take over!", proposer[:10], maxWaitTime)
 
 					// 【关键修复】重置状态并直接出块，不再等待或同步
 					waitCount = 0
@@ -114,26 +114,18 @@ func (n *Node) StartBlockProduction() {
 			}
 		}
 
-		// 【关键检查】checkpoint统一后，必须验证区块同步是否完成
-		// 检查前一个区块是否存在于数据库（防止从checkpoint恢复后跳过区块历史直接出块）
+		// 【生存活性第一】基于checkpoint出块，不强制要求历史区块
+		// latestBlock已经从checkpoint恢复，包含正确的hash，可以直接出块
+		// 历史区块同步是后台任务，不阻塞出块
 		if nextHeight > 1 {
 			prevBlockInDB, err := n.db.GetBlockByHeight(nextHeight - 1)
 			if err != nil || prevBlockInDB == nil {
-				// 前一个区块不在数据库中，说明区块同步未完成
-				log.Printf("⏳ 【区块同步未完成】区块 #%d 不在数据库中，等待同步完成...", nextHeight-1)
-				if n.p2pServer != nil {
-					// 请求同步缺失的区块
-					n.p2pServer.RequestSyncFromBestPeer(nextHeight-1, nextHeight+100)
-				}
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			// 额外验证：确保prevBlock的hash与链上latestBlock的hash一致
-			if prevBlockInDB.Hash() != latestBlock.Hash() {
-				log.Printf("⚠️ 【区块链不连续】DB区块 #%d hash=%s 与链上不一致 hash=%s，等待同步...",
-					nextHeight-1, prevBlockInDB.Hash().String()[:16], latestBlock.Hash().String()[:16])
-				time.Sleep(2 * time.Second)
-				continue
+				// 前一个区块不在数据库中，但我们有checkpoint状态
+				// 【生存活性】直接基于内存中的latestBlock出块
+				log.Printf("📦 【生存活性】区块 #%d 不在DB中，基于checkpoint状态出块", nextHeight-1)
+			} else if prevBlockInDB.Hash() != latestBlock.Hash() {
+				// 数据库区块与链状态不一致，以链状态为准
+				log.Printf("⚠️ 【链状态优先】DB区块hash不一致，以内存链状态为准")
 			}
 		}
 
@@ -160,10 +152,10 @@ func (n *Node) StartBlockProduction() {
 }
 
 func (n *Node) produceBlock(height uint64, prevBlock *core.Block) error {
-	// 计算新区块时间戳：确保至少比前一区块大出块间隔，避免竞争出块时时间戳冲突
-	blockInterval := int64(core.BlockInterval())
-	minTimestamp := prevBlock.Header.Timestamp + blockInterval
-	currentTimestamp := time.Now().Unix()
+	// 计算新区块时间戳（毫秒级）：确保至少比前一区块大出块间隔，避免竞争出块时时间戳冲突
+	blockIntervalMs := int64(core.BlockInterval()) * 1000 // 转换为毫秒
+	minTimestamp := prevBlock.Header.Timestamp + blockIntervalMs
+	currentTimestamp := time.Now().UnixMilli()
 
 	// 使用两者中的较大值，确保时间戳严格递增
 	var newTimestamp int64
@@ -235,19 +227,25 @@ func (n *Node) produceBlock(height uint64, prevBlock *core.Block) error {
 		}
 	}
 
-	if err := n.state.Commit(); err != nil {
-		n.state.RestoreSnapshot(stateSnapshot)
-		return fmt.Errorf("failed to commit state: %v", err)
-	}
-
-	if err := n.chain.AddBlock(block); err != nil {
-		n.state.RestoreSnapshot(stateSnapshot)
-		return fmt.Errorf("failed to add block: %v", err)
-	}
-
+	// 【原子性提交顺序】区块先落盘，状态后提交
+	// 1. 先保存区块到数据库（区块落盘）
 	if err := n.db.SaveBlock(block); err != nil {
 		n.state.RestoreSnapshot(stateSnapshot)
 		return fmt.Errorf("failed to save block: %v", err)
+	}
+
+	// 2. 提交状态并更新state_height（P0验证+原子性标记）
+	// 如果崩溃发生在这里，重启时会检测到block_height > state_height，触发重放
+	if err := n.state.CommitWithP0Verify(height); err != nil {
+		// 状态提交失败，但区块已保存。重启时会重放此区块
+		n.state.RestoreSnapshot(stateSnapshot)
+		return fmt.Errorf("failed to commit state (P0 check): %v", err)
+	}
+
+	// 3. 更新内存中的链状态
+	if err := n.chain.AddBlock(block); err != nil {
+		// 内存状态更新失败不影响持久化数据，重启会恢复
+		return fmt.Errorf("failed to add block: %v", err)
 	}
 
 	if n.p2pServer != nil {

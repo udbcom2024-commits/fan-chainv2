@@ -118,13 +118,14 @@ func (bc *Blockchain) ValidateBlock(block *Block) error {
 	return block.Validate(bc.latestBlock)
 }
 
-// 等待下一个出块时间
+// 等待下一个出块时间（时间戳为毫秒级）
 func (bc *Blockchain) WaitForNextBlock() {
 	if bc.latestBlock == nil {
 		return
 	}
 
-	nextBlockTime := time.Unix(bc.latestBlock.Header.Timestamp, 0).Add(time.Duration(BlockInterval()) * time.Second)
+	// 时间戳是毫秒级，使用UnixMilli转换
+	nextBlockTime := time.UnixMilli(bc.latestBlock.Header.Timestamp).Add(time.Duration(BlockInterval()) * time.Second)
 	waitDuration := time.Until(nextBlockTime)
 
 	if waitDuration > 0 {

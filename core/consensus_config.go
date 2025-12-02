@@ -86,10 +86,11 @@ type ValidatorParams struct {
 
 // 存储参数
 type StorageParams struct {
-	LedgerRetentionDays        int  `json:"ledger_retention_days"`         // 账本保留天数
+	LedgerRetentionDays        int  `json:"ledger_retention_days"`         // 账本保留天数（0=永久保留）
 	AutoCleanupEnabled         bool `json:"auto_cleanup_enabled"`          // 自动清理开关
 	CleanupCheckIntervalHours  int  `json:"cleanup_check_interval_hours"`  // 清理检查间隔(小时)
 	MinBlocksToKeep            int  `json:"min_blocks_to_keep"`            // 最少保留区块数
+	VerifyBlockHash            int  `json:"verify_block_hash"`             // 读取区块时校验SHA3哈希（1=校验，0=不校验）
 }
 
 // 交易参数
@@ -164,8 +165,8 @@ func (m *ConsensusConfigManager) setDefault() {
 		BlockParams: BlockParams{
 			BlockIntervalSeconds:      5,
 			FinalityBlocks:            8,
-			CheckpointInterval:        5,
-			CheckpointKeepCount:       3,
+			CheckpointInterval:        1,  // 每块一个Checkpoint（5秒确认）- 符合fan.md P1协议
+			CheckpointKeepCount:       1,  // 单点设计，只保留最新
 			MaxTimestampDrift:         300,     // 5分钟
 			MaxBlockSize:              1048576, // 1MB
 			BlockDataThresholdPercent: 80,      // 80%
@@ -210,6 +211,7 @@ func (m *ConsensusConfigManager) setDefault() {
 			AutoCleanupEnabled:        true,
 			CleanupCheckIntervalHours: 24,
 			MinBlocksToKeep:           10000,
+			VerifyBlockHash:           1, // 默认校验（1=校验，0=不校验）
 		},
 		RewardThresholds: []RewardThreshold{},
 	}
@@ -295,6 +297,7 @@ func (m *ConsensusConfigManager) calculateConsensusHash(config *ConsensusConfig)
 		config.StorageParams.AutoCleanupEnabled,
 		config.StorageParams.CleanupCheckIntervalHours,
 		config.StorageParams.MinBlocksToKeep,
+		config.StorageParams.VerifyBlockHash,
 		len(config.RewardThresholds),
 	)
 

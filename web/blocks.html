@@ -71,12 +71,13 @@
     <script>
         let currentPage = 1;
         const pageSize = 20;
-        let ws = null;
+        let pollInterval = null;
+        const POLL_INTERVAL_MS = 5000;
 
         // 初始化
         async function init() {
             await loadBlocks();
-            initWebSocket();
+            startPolling();
         }
 
         // 加载区块列表
@@ -116,17 +117,21 @@
             }
         }
 
-        // 初始化WebSocket
-        function initWebSocket() {
-            ws = new WebSocketClient();
-
-            ws.on('new_block', (block) => {
+        // 启动轮询
+        function startPolling() {
+            pollInterval = setInterval(async () => {
                 if (currentPage === 1) {
-                    loadBlocks();
+                    await loadBlocks();
                 }
-            });
+            }, POLL_INTERVAL_MS);
+        }
 
-            ws.connect();
+        // 停止轮询
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
         }
 
         // 更新分页按钮状态
@@ -154,9 +159,9 @@
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', init);
 
-        // 页面卸载时断开WebSocket
+        // 页面卸载时停止轮询
         window.addEventListener('beforeunload', () => {
-            if (ws) ws.disconnect();
+            stopPolling();
         });
     </script>
 </body>

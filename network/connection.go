@@ -1,12 +1,106 @@
 package network
 
 import (
+	"encoding/json"
 	"fan-chain/core"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"net/http"
+	"strconv"
 	"time"
 )
+
+// NodeHealthStatus 节点健康检查结果
+type NodeHealthStatus struct {
+	IP        string
+	Port      string // P2P端口
+	APIPort   string // API端口（通常是P2P端口-1）
+	Healthy   bool
+	Height    uint64
+	Running   bool
+	NodeName  string
+	Address   string
+	CheckTime time.Time
+}
+
+// 健康检查超时时间
+const healthCheckTimeout = 3 * time.Second
+
+// checkNodeHealth 检查节点健康状态（通过API端口）
+// p2pPort 是P2P端口（如9001），API端口通常是 p2pPort - 1（如9000）
+func checkNodeHealth(ip string, p2pPort string) *NodeHealthStatus {
+	status := &NodeHealthStatus{
+		IP:        ip,
+		Port:      p2pPort,
+		CheckTime: time.Now(),
+	}
+
+	// 计算API端口（P2P端口 - 1）
+	portNum, err := strconv.Atoi(p2pPort)
+	if err != nil {
+		status.APIPort = "9000" // 默认API端口
+	} else {
+		status.APIPort = strconv.Itoa(portNum - 1)
+	}
+
+	// 构建API URL
+	apiURL := fmt.Sprintf("http://%s:%s/status", ip, status.APIPort)
+
+	// 创建HTTP客户端（带超时）
+	client := &http.Client{
+		Timeout: healthCheckTimeout,
+	}
+
+	// 发送请求
+	resp, err := client.Get(apiURL)
+	if err != nil {
+		log.Printf("Health check failed for %s: %v", ip, err)
+		return status
+	}
+	defer resp.Body.Close()
+
+	// 检查HTTP状态码
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Health check failed for %s: HTTP %d", ip, resp.StatusCode)
+		return status
+	}
+
+	// 读取响应
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Health check failed for %s: %v", ip, err)
+		return status
+	}
+
+	// 解析JSON响应
+	var apiStatus struct {
+		Address  string `json:"address"`
+		Height   uint64 `json:"height"`
+		NodeName string `json:"node_name"`
+		Peers    int    `json:"peers"`
+		Running  bool   `json:"running"`
+	}
+
+	if err := json.Unmarshal(body, &apiStatus); err != nil {
+		log.Printf("Health check failed for %s: invalid JSON: %v", ip, err)
+		return status
+	}
+
+	// 填充健康状态
+	status.Healthy = apiStatus.Running
+	status.Height = apiStatus.Height
+	status.Running = apiStatus.Running
+	status.NodeName = apiStatus.NodeName
+	status.Address = apiStatus.Address
+
+	if status.Healthy {
+		log.Printf("✓ Node %s (%s) is healthy, height=%d", ip, apiStatus.NodeName, apiStatus.Height)
+	}
+
+	return status
+}
 
 // 接受连接循环
 func (s *Server) acceptLoop() {
@@ -38,7 +132,7 @@ func (s *Server) acceptLoop() {
 	}
 }
 
-// 连接到种子节点（支持DNS轮询，自动跳过自己）
+// 连接到种子节点（支持DNS轮询，自动跳过自己，带健康检查）
 func (s *Server) connectToSeeds() {
 	for _, seed := range s.seedPeers {
 		go func(host string) {
@@ -52,18 +146,31 @@ func (s *Server) connectToSeeds() {
 			// DNS解析获取所有IP
 			ips, err := net.LookupIP(seedHost)
 			if err != nil {
-				// 如果解析失败，可能本身就是IP，直接尝试连接
+				// 如果解析失败，可能本身就是IP，先健康检查再连接
+				ipStr := seedHost
+				if s.isSelfAddress(ipStr) {
+					log.Printf("Skipping self IP: %s", ipStr)
+					return
+				}
+
+				// 健康检查
+				health := checkNodeHealth(ipStr, seedPort)
+				if !health.Healthy {
+					log.Printf("✗ Skipping unhealthy node %s", host)
+					return
+				}
+
 				if err := s.ConnectToPeer(host); err != nil {
 					log.Printf("Failed to connect to seed %s: %v", host, err)
 				}
 				return
 			}
 
-			// 尝试连接每个IP（跳过自己）
+			// 尝试连接每个IP（跳过自己，带健康检查）
 			connectedCount := 0
+			healthyCount := 0
 			for _, ip := range ips {
 				ipStr := ip.String()
-				peerAddr := net.JoinHostPort(ipStr, seedPort)
 
 				// 跳过自己
 				if s.isSelfAddress(ipStr) {
@@ -71,18 +178,29 @@ func (s *Server) connectToSeeds() {
 					continue
 				}
 
+				// 健康检查
+				health := checkNodeHealth(ipStr, seedPort)
+				if !health.Healthy {
+					log.Printf("✗ Skipping unhealthy node %s", ipStr)
+					continue
+				}
+				healthyCount++
+
+				// 连接到健康的节点
+				peerAddr := net.JoinHostPort(ipStr, seedPort)
 				if err := s.ConnectToPeer(peerAddr); err != nil {
 					log.Printf("Failed to connect to %s: %v", peerAddr, err)
 				} else {
 					connectedCount++
 				}
 			}
-			log.Printf("Connected to %d/%d peers from %s", connectedCount, len(ips), host)
+			log.Printf("Connected to %d/%d healthy peers (total IPs: %d) from %s",
+				connectedCount, healthyCount, len(ips), host)
 		}(seed)
 	}
 }
 
-// 重连到种子节点（支持DNS轮询，自动跳过自己）
+// 重连到种子节点（支持DNS轮询，自动跳过自己，带健康检查）
 func (s *Server) reconnectToSeeds() {
 	for _, seed := range s.seedPeers {
 		go func(host string) {
@@ -100,6 +218,17 @@ func (s *Server) reconnectToSeeds() {
 				_, connected := s.peers[host]
 				s.peersMu.RUnlock()
 				if !connected {
+					ipStr := seedHost
+					if s.isSelfAddress(ipStr) {
+						return
+					}
+
+					// 健康检查
+					health := checkNodeHealth(ipStr, seedPort)
+					if !health.Healthy {
+						return
+					}
+
 					if err := s.ConnectToPeer(host); err != nil {
 						log.Printf("Failed to reconnect to seed %s: %v", host, err)
 					}
@@ -107,7 +236,7 @@ func (s *Server) reconnectToSeeds() {
 				return
 			}
 
-			// 尝试连接每个未连接的IP（跳过自己）
+			// 尝试连接每个未连接的IP（跳过自己，带健康检查）
 			for _, ip := range ips {
 				ipStr := ip.String()
 				peerAddr := net.JoinHostPort(ipStr, seedPort)
@@ -123,10 +252,16 @@ func (s *Server) reconnectToSeeds() {
 				s.peersMu.RUnlock()
 
 				if !connected {
+					// 健康检查
+					health := checkNodeHealth(ipStr, seedPort)
+					if !health.Healthy {
+						continue
+					}
+
 					if err := s.ConnectToPeer(peerAddr); err != nil {
 						log.Printf("Failed to reconnect to %s: %v", peerAddr, err)
 					} else {
-						log.Printf("Reconnected to %s", peerAddr)
+						log.Printf("Reconnected to healthy node %s", peerAddr)
 					}
 				}
 			}
