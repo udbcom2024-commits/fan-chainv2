@@ -37,7 +37,7 @@ func getShardKey(address string) string {
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: migrate_to_sharded <data_dir>")
-		fmt.Println("Example: migrate_to_sharded C:/Users/jjj/fan/node/data")
+		fmt.Println("Example: migrate_to_sharded ./data")
 		os.Exit(1)
 	}
 
